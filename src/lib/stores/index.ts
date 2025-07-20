@@ -1,11 +1,20 @@
 // Svelte stores for global state management
 
 import { writable, derived } from 'svelte/store';
-import type { User, LocationCoords, Venue, SearchFilters } from '$lib/types';
+import type { LocationCoords, Venue, SearchFilters } from '$lib/types';
 
-// User authentication store
-export const user = writable<User | null>(null);
-export const isAuthenticated = derived(user, ($user) => $user !== null);
+// Re-export auth stores from dedicated auth module
+export { 
+  user, 
+  session, 
+  isAuthenticated, 
+  userDisplayName, 
+  authLoading, 
+  authError,
+  initializeAuth,
+  signOut,
+  clearAuthError
+} from './auth';
 
 // Location store
 export const userLocation = writable<LocationCoords | null>(null);

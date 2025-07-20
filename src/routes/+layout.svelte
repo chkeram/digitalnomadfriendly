@@ -1,10 +1,21 @@
 <script lang="ts">
   import '../app.css'
-  import { enhance } from '$app/forms'
+  import { onMount } from 'svelte'
   import type { LayoutData } from './$types'
+  import { initializeAuth, user, session, isAuthenticated, userDisplayName } from '$lib/stores/auth'
   
   export let data: LayoutData
-  $: ({ user, session } = data)
+  
+  // Initialize auth store once when component mounts
+  onMount(() => {
+    const cleanup = initializeAuth(data.session, data.user)
+    return cleanup
+  })
+  
+  // Use server data as fallback for initial render
+  $: currentUser = $user || data.user
+  $: currentSession = $session || data.session
+  $: isCurrentlyAuthenticated = $isAuthenticated || Boolean(data.session && data.user)
 </script>
 
 <div class="min-h-screen bg-gray-50">
@@ -19,9 +30,9 @@
         </div>
         
         <div class="flex items-center space-x-4">
-          {#if session && user}
+          {#if isCurrentlyAuthenticated}
             <span class="text-sm text-gray-700">
-              Welcome, {user.name || user.email}
+              Welcome, {currentUser?.name || currentUser?.email || 'User'}
             </span>
             <form method="POST" action="/auth/logout">
               <button 
