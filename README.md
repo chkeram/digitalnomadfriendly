@@ -50,9 +50,16 @@ A modern, minimal web application that helps digital nomads, remote workers, and
    
    Fill in your environment variables:
    ```env
+   # Supabase Configuration
    PUBLIC_SUPABASE_URL=your_supabase_project_url
    PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+   
+   # Google Maps API
    PUBLIC_GOOGLE_MAPS_API_KEY=your_google_maps_api_key
+   
+   # Optional: For development and testing
+   SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+   DATABASE_URL=your_database_connection_string
    ```
 
 4. **Start development server**
@@ -62,8 +69,82 @@ A modern, minimal web application that helps digital nomads, remote workers, and
 
    The app will be available at `http://localhost:5173`
 
+## 🗄️ Database Setup
+
+### Prerequisites
+- Supabase project (free tier available)
+- PostgreSQL with PostGIS extension (provided by Supabase)
+
+### Automated Database Setup
+
+1. **Create a Supabase project**
+   - Go to [supabase.com](https://supabase.com) and create a new project
+   - Note your project URL and anon key
+
+2. **Enable PostGIS extension**
+   - In Supabase Dashboard → Database → Extensions
+   - Search for "postgis" and click Enable
+
+3. **Get your service role key**
+   - Go to Supabase Dashboard → Settings → API
+   - Copy the `service_role` key (NOT the anon key)
+   - Add it to your `.env` file as `SUPABASE_SERVICE_ROLE_KEY`
+
+4. **Run automated setup**
+   ```bash
+   npm run db:setup
+   ```
+   
+   This will automatically:
+   - Test your Supabase connection
+   - Create all database tables and relationships
+   - Set up Row Level Security policies
+   - Add geospatial functions for venue discovery
+   - Load sample data for testing
+
+### Manual Database Setup (Alternative)
+
+If automated setup fails, you can set up manually:
+   - Copy and paste `database/migrations/001_initial_schema.sql` in Supabase SQL Editor
+   - Copy and paste `database/seed/sample_data.sql` for sample data
+   - Run `database/test_schema.sql` to verify everything works
+
+### Database Features
+
+- **🌍 Geospatial Support**: PostGIS extension for location-based queries
+- **🔒 Row Level Security**: Comprehensive security policies for data protection
+- **⚡ Performance Optimized**: Strategic indexes for fast queries
+- **🔗 Relational Integrity**: Foreign keys and constraints for data consistency
+- **📊 Automatic Aggregation**: Triggers for real-time rating calculations
+- **🗃️ Soft Deletes**: Data retention with `deleted_at` timestamps
+
+### Key Database Tables
+
+| Table | Description |
+|-------|-------------|
+| `users` | User profiles and preferences |
+| `venues` | Cafe/venue information with geospatial data |
+| `venue_amenities` | Detailed amenity information (WiFi, noise, etc.) |
+| `reviews` | User reviews with multiple rating categories |
+| `venue_photos` | Photos and images for venues |
+| `favorites` | User bookmarks and venue lists |
+| `venue_visits` | Visit tracking for analytics |
+
+### Custom Database Functions
+
+```sql
+-- Find venues within radius
+SELECT * FROM find_venues_within_radius(37.7749, -122.4194, 5.0);
+
+-- Get personalized recommendations
+SELECT * FROM get_venue_recommendations('user-uuid', 37.7749, -122.4194, 10.0);
+```
+
+For complete database documentation, see [`database/README.md`](database/README.md).
+
 ## 📜 Available Scripts
 
+### Frontend Scripts
 | Script | Description |
 |--------|-------------|
 | `npm run dev` | Start development server |
@@ -75,22 +156,48 @@ A modern, minimal web application that helps digital nomads, remote workers, and
 | `npm run format` | Format code with Prettier |
 | `npm run check` | TypeScript type checking |
 
+### Database Scripts
+| Script | Description |
+|--------|-------------|
+| `npm run db:setup` | Complete automated database initialization |
+| `npm run db:reset` | Reset and reinitialize database |
+
 ## 🏗 Project Structure
 
 ```
-src/
-├── lib/
-│   ├── components/          # Reusable UI components
-│   │   ├── ui/             # Basic UI components
-│   │   ├── map/            # Map-related components  
-│   │   └── venue/          # Venue-specific components
-│   ├── stores/             # Svelte stores for state
-│   ├── services/           # API services
-│   ├── types/              # TypeScript definitions
-│   └── utils/              # Utility functions
-├── routes/                 # SvelteKit routes
-├── test/                   # Test utilities
-└── app.css                # Global styles
+digitalnomadfriendly/
+├── database/               # Database schema and related files
+│   ├── migrations/        # SQL migration files
+│   │   └── 001_initial_schema.sql
+│   ├── seed/             # Sample data for development
+│   │   └── sample_data.sql
+│   ├── test_schema.sql   # Database testing script
+│   └── README.md         # Database documentation
+├── scripts/              # Automation scripts
+│   ├── setup-db.js      # Automated database setup
+│   └── create-exec-function.sql # Helper for automation
+├── src/
+│   ├── lib/
+│   │   ├── components/   # Reusable UI components
+│   │   │   ├── ui/      # Basic UI components
+│   │   │   ├── map/     # Map-related components  
+│   │   │   └── venue/   # Venue-specific components
+│   │   ├── stores/      # Svelte stores for state
+│   │   ├── services/    # API services
+│   │   ├── types/       # TypeScript definitions
+│   │   │   ├── index.ts        # General types
+│   │   │   └── database.ts     # Database schema types
+│   │   └── utils/       # Utility functions
+│   ├── routes/          # SvelteKit routes
+│   ├── test/            # Test utilities
+│   └── app.css         # Global styles
+├── tutorial-instructions/ # Learning resources
+│   ├── frontend/        # Frontend development tutorials
+│   ├── database/        # Database development tutorials
+│   └── README.md        # Tutorial index and learning paths
+├── .env.example          # Environment variables template
+├── CLAUDE.md            # AI assistant instructions
+└── PRD.md              # Product requirements document
 ```
 
 ## 🎯 Development Phases
@@ -99,7 +206,7 @@ src/
 - [x] Project setup with SvelteKit + TypeScript
 - [x] Tailwind CSS integration
 - [x] Project structure and tooling
-- [ ] Database schema and Supabase integration
+- [x] Database schema and Supabase integration
 - [ ] Google Maps integration with cost optimization
 - [ ] Basic venue discovery and reviews
 - [ ] User authentication
@@ -131,6 +238,51 @@ src/
 - Write tests for new functionality
 - Follow the existing component structure
 - Use semantic commit messages
+
+### Database Development Workflow
+
+1. **Schema Changes**: Create new migration files in `database/migrations/`
+2. **Test Locally**: Run `npm run db:setup` to test changes
+3. **Type Updates**: Update TypeScript types in `src/lib/types/database.ts`
+4. **Sample Data**: Add test data to `database/seed/sample_data.sql`
+5. **Testing**: Use automated test suite or run manual tests
+6. **Documentation**: Update `database/README.md` with new features
+
+### Quick Database Commands
+
+```bash
+# Setup database from scratch
+npm run db:setup
+
+# Reset database (useful during development)
+npm run db:reset
+```
+
+### Useful SQL Queries
+
+```sql
+-- Test venue search
+SELECT * FROM find_venues_within_radius(37.7749, -122.4194, 5.0);
+
+-- Check user recommendations
+SELECT * FROM get_venue_recommendations('user-uuid', 37.7749, -122.4194);
+
+-- Verify data integrity
+SELECT table_name, column_name FROM information_schema.columns 
+WHERE table_schema = 'public' ORDER BY table_name;
+```
+
+## 📖 Learning Resources
+
+### For New Developers
+- **Frontend Focus**: Start with [`tutorial-instructions/frontend/`](tutorial-instructions/frontend/) for SvelteKit development
+- **Database Focus**: Begin with [`tutorial-instructions/database/`](tutorial-instructions/database/) for database development
+- **Full-Stack**: Check the [Tutorial Index](tutorial-instructions/README.md) for guided learning paths
+
+### Key Documentation
+- [`database/README.md`](database/README.md) - Complete database documentation
+- [`tutorial-instructions/README.md`](tutorial-instructions/README.md) - Comprehensive tutorials and learning paths
+- [`CLAUDE.md`](CLAUDE.md) - AI assistant instructions and project context
 
 ## 📄 License
 
