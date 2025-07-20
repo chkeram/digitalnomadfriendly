@@ -51,7 +51,7 @@ function mapSupabaseUser(supabaseUser: SupabaseUser): User {
 			  supabaseUser.user_metadata?.name || '',
 		avatar_url: supabaseUser.user_metadata?.avatar_url || '',
 		created_at: supabaseUser.created_at || new Date().toISOString(),
-		updated_at: supabaseUser.updated_at || new Date().toISOString(),
+		// updated_at: supabaseUser.updated_at || new Date().toISOString(), // TODO: Add to User type
 		last_login_at: supabaseUser.last_sign_in_at || undefined,
 		
 		// Default user preferences (can be updated later)
@@ -77,33 +77,26 @@ export function initializeAuth(initialSession: Session | null, initialUser: User
 	session.set(initialSession)
 	user.set(initialUser)
 
-	// Only set up client-side auth listener in browser
+	// We need onAuthStateChange for reactive auth state updates
 	if (browser) {
-		// Listen for auth state changes
+		// Listen for auth state changes - ignore the session parameter to avoid warnings
 		const { data: { subscription } } = supabase.auth.onAuthStateChange(
-			async (event, newSession) => {
-				console.log('🔄 Auth state change:', event, newSession?.user?.email)
+			async (event) => {
+				console.log('🔄 Auth state change:', event)
 				
-				// Always validate the session by calling getUser() for security
-				if (newSession) {
-					const { data: userData, error: userError } = await supabase.auth.getUser()
-					
-					if (!userError && userData.user) {
-						// Valid session with authenticated user
-						session.set(newSession)
-						const mappedUser = mapSupabaseUser(userData.user)
-						user.set(mappedUser)
-						console.log('✅ Auth state validated with getUser()')
-					} else {
-						// Invalid session or user verification failed
-						console.log('❌ Session validation failed, clearing auth state')
-						session.set(null)
-						user.set(null)
-					}
+				// Always validate with getUser() for security
+				const { data: userData, error: userError } = await supabase.auth.getUser()
+				
+				if (!userError && userData.user) {
+					// We have a valid user - set user but keep session from server
+					const mappedUser = mapSupabaseUser(userData.user)
+					user.set(mappedUser)
+					console.log('✅ Auth state validated')
 				} else {
-					// No session
+					// No valid user
 					session.set(null)
 					user.set(null)
+					console.log('✅ Auth state cleared')
 				}
 				
 				authError.set(null)
@@ -150,13 +143,21 @@ export function clearAuthError() {
 }
 
 /**
- * Get current session (client-side helper)
+ * Get current session (client-side helper) - securely validated
  */
 export async function getCurrentSession() {
 	if (!browser) return null
 	
-	const { data: { session: currentSession } } = await supabase.auth.getSession()
-	return currentSession
+	// Always validate with getUser() first for security
+	const { data: userData, error: userError } = await supabase.auth.getUser()
+	
+	if (userError || !userData.user) {
+		return null
+	}
+	
+	// Only get session if user is validated
+	const { data: { session } } = await supabase.auth.getSession()
+	return session
 }
 
 /**

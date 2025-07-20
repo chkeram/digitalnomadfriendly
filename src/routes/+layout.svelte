@@ -8,7 +8,7 @@
   
   // Initialize auth store once when component mounts
   onMount(() => {
-    const cleanup = initializeAuth(data.session, data.user)
+    const cleanup = initializeAuth(data.session, data.user || null)
     return cleanup
   })
   
