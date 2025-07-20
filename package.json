@@ -23,7 +23,10 @@
 		"vite": "^7.0.4"
 	},
 	"dependencies": {
+		"@supabase/auth-ui-svelte": "^0.2.9",
+		"@supabase/ssr": "^0.6.1",
 		"@supabase/supabase-js": "^2.52.0",
-		"dotenv": "^17.2.0"
+		"dotenv": "^17.2.0",
+		"zod": "^4.0.5"
 	}
 }
