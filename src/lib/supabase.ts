@@ -4,7 +4,15 @@ import type { Database } from './types/database'
 
 export const supabase = createBrowserClient<Database>(
 	PUBLIC_SUPABASE_URL,
-	PUBLIC_SUPABASE_ANON_KEY
+	PUBLIC_SUPABASE_ANON_KEY,
+	{
+		auth: {
+			// Optional: Configure shorter session duration (default is 1 hour)
+			// autoRefreshToken: true,
+			// persistSession: true,
+			// detectSessionInUrl: true
+		}
+	}
 )
 
 // Server-side client (for hooks and server routes)

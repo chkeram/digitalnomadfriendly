@@ -84,16 +84,29 @@ export function initializeAuth(initialSession: Session | null, initialUser: User
 			async (event, newSession) => {
 				console.log('🔄 Auth state change:', event, newSession?.user?.email)
 				
-				session.set(newSession)
-				authError.set(null)
-
-				if (newSession?.user) {
-					// Map Supabase user to our User type
-					const mappedUser = mapSupabaseUser(newSession.user)
-					user.set(mappedUser)
+				// Always validate the session by calling getUser() for security
+				if (newSession) {
+					const { data: userData, error: userError } = await supabase.auth.getUser()
+					
+					if (!userError && userData.user) {
+						// Valid session with authenticated user
+						session.set(newSession)
+						const mappedUser = mapSupabaseUser(userData.user)
+						user.set(mappedUser)
+						console.log('✅ Auth state validated with getUser()')
+					} else {
+						// Invalid session or user verification failed
+						console.log('❌ Session validation failed, clearing auth state')
+						session.set(null)
+						user.set(null)
+					}
 				} else {
+					// No session
+					session.set(null)
 					user.set(null)
 				}
+				
+				authError.set(null)
 			}
 		)
 

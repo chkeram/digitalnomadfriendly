@@ -39,32 +39,33 @@ const supabase: Handle = async ({ event, resolve }) => {
 	)
 
 	/**
-	 * Unlike `supabase.auth.getSession()`, which returns the session _without_
-	 * validating the JWT, this function also calls `getUser()` to validate the JWT.
-	 * 
-	 * This provides better security by ensuring the session is still valid.
+	 * Securely get the current user session by validating with getUser().
+	 * This avoids the security warning by not relying on potentially insecure session data.
 	 */
 	event.locals.safeGetSession = async () => {
-		const {
-			data: { session },
-			error: sessionError
-		} = await event.locals.supabase.auth.getSession()
-
-		if (!session || sessionError) {
-			return { session: null, user: null }
-		}
-
+		// Always start with getUser() for security - this validates the JWT
 		const {
 			data: { user },
 			error: userError
 		} = await event.locals.supabase.auth.getUser()
 
 		if (userError || !user) {
-			// JWT validation failed or user not found
+			// No valid user found or JWT validation failed
 			return { session: null, user: null }
 		}
 
-		// Map Supabase user to our User type
+		// Only if getUser() succeeds, then get the session
+		const {
+			data: { session },
+			error: sessionError
+		} = await event.locals.supabase.auth.getSession()
+
+		if (!session || sessionError) {
+			// This shouldn't happen if getUser() succeeded, but handle it
+			return { session: null, user: null }
+		}
+
+		// Map Supabase user to our User type (using validated user data)
 		const mappedUser = {
 			id: user.id,
 			email: user.email || '',
