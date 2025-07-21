@@ -5,6 +5,10 @@ import type { Session, SupabaseClient } from '@supabase/supabase-js'
 import type { Database, User } from '$lib/types/database'
 
 declare global {
+	// Ensure Google Maps types are available globally
+	interface Window {
+		google: typeof google;
+	}
 	namespace App {
 		interface Error {
 			code?: string;
