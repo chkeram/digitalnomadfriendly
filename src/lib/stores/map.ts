@@ -17,7 +17,7 @@ export interface MapViewport {
   bounds: google.maps.LatLngBounds | null;
 }
 
-// Map state store
+// Map state store with enhanced viewport management
 function createMapStore() {
   const initialState: MapState = {
     map: null,
@@ -33,31 +33,111 @@ function createMapStore() {
 
   return {
     subscribe,
-    setMap: (map: google.maps.Map) => update(state => ({
-      ...state,
-      map,
-      isLoaded: true,
-      isLoading: false,
-      error: null
-    })),
-    setCenter: (center: LocationCoords) => update(state => ({
-      ...state,
-      center
-    })),
-    setZoom: (zoom: number) => update(state => ({
-      ...state,
-      zoom
-    })),
-    setBounds: (bounds: google.maps.LatLngBounds) => update(state => ({
-      ...state,
-      bounds
-    })),
-    setViewport: (viewport: MapViewport) => update(state => ({
-      ...state,
-      center: viewport.center,
-      zoom: viewport.zoom,
-      bounds: viewport.bounds
-    })),
+    setMap: (map: google.maps.Map) => {
+      update(state => ({
+        ...state,
+        map,
+        isLoaded: true,
+        isLoading: false,
+        error: null
+      }));
+
+      // Set up viewport change listeners
+      if (map) {
+        const updateFromMap = () => {
+          const center = map.getCenter();
+          const zoom = map.getZoom();
+          const bounds = map.getBounds();
+          
+          if (center && zoom !== undefined) {
+            update(state => ({
+              ...state,
+              center: { lat: center.lat(), lng: center.lng() },
+              zoom,
+              bounds: bounds || null
+            }));
+          }
+        };
+
+        // Listen for viewport changes
+        map.addListener('bounds_changed', updateFromMap);
+        map.addListener('zoom_changed', updateFromMap);
+        map.addListener('center_changed', updateFromMap);
+        
+        // Initial sync
+        updateFromMap();
+      }
+    },
+    setCenter: (center: LocationCoords) => update(state => {
+      // Update map if available
+      if (state.map) {
+        state.map.setCenter(new google.maps.LatLng(center.lat, center.lng));
+      }
+      return {
+        ...state,
+        center
+      };
+    }),
+    setZoom: (zoom: number) => update(state => {
+      // Update map if available
+      if (state.map) {
+        state.map.setZoom(zoom);
+      }
+      return {
+        ...state,
+        zoom
+      };
+    }),
+    setBounds: (bounds: google.maps.LatLngBounds) => update(state => {
+      // Update map if available
+      if (state.map) {
+        state.map.fitBounds(bounds);
+      }
+      return {
+        ...state,
+        bounds
+      };
+    }),
+    setViewport: (viewport: MapViewport) => update(state => {
+      // Update map if available
+      if (state.map) {
+        if (viewport.bounds) {
+          state.map.fitBounds(viewport.bounds);
+        } else {
+          state.map.setCenter(new google.maps.LatLng(viewport.center.lat, viewport.center.lng));
+          state.map.setZoom(viewport.zoom);
+        }
+      }
+      return {
+        ...state,
+        center: viewport.center,
+        zoom: viewport.zoom,
+        bounds: viewport.bounds
+      };
+    }),
+    panTo: (center: LocationCoords, zoom?: number) => update(state => {
+      if (state.map) {
+        state.map.panTo(new google.maps.LatLng(center.lat, center.lng));
+        if (zoom !== undefined) {
+          state.map.setZoom(zoom);
+        }
+      }
+      return {
+        ...state,
+        center,
+        ...(zoom !== undefined && { zoom })
+      };
+    }),
+    fitBounds: (bounds: google.maps.LatLngBounds, padding?: number) => update(state => {
+      if (state.map) {
+        const options = padding ? { padding } : undefined;
+        state.map.fitBounds(bounds, options);
+      }
+      return {
+        ...state,
+        bounds
+      };
+    }),
     setLoading: (loading: boolean) => update(state => ({
       ...state,
       isLoading: loading

@@ -2,6 +2,7 @@
   import { browser } from '$app/environment';
   import { googleMapsService } from '$lib/services/maps.js';
   import { mapStore, locationStore } from '$lib/stores';
+  import { mapErrorBoundary } from '$lib/utils/error-boundary.js';
   import type { LocationCoords } from '$lib/types';
 
   // Props using Svelte 5 runes
@@ -71,7 +72,8 @@
       return;
     }
 
-    try {
+    // Wrap initialization in error boundary
+    const safeInitialize = mapErrorBoundary.wrapAsync(async () => {
       console.log('Starting map initialization...');
       console.log('mapContainer element:', mapContainer);
       console.log('mapContainer dimensions:', mapContainer.offsetWidth, 'x', mapContainer.offsetHeight);
@@ -97,7 +99,8 @@
         mapTypeControl: false,
         streetViewControl: true,
         fullscreenControl: true,
-        zoomControl: true
+        zoomControl: true,
+        gestureHandling: 'cooperative'
       };
 
       console.log('Creating map with options:', mapOptions);
@@ -121,6 +124,11 @@
         getCurrentLocation();
       }
 
+      return map;
+    }, 'MapContainer.initializeMap');
+
+    try {
+      await safeInitialize();
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to initialize map';
       console.error('Map initialization failed:', err);
@@ -133,7 +141,7 @@
   async function getCurrentLocation() {
     if (!enableCurrentLocation) return;
 
-    try {
+    const safeGetLocation = mapErrorBoundary.wrapAsync(async () => {
       console.log('Getting current location...');
       locationStore.setLoading(true);
       locationStore.clearError();
@@ -153,6 +161,11 @@
         map.panTo(location);
       }
 
+      return coords;
+    }, 'MapContainer.getCurrentLocation');
+
+    try {
+      await safeGetLocation();
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to get current location';
       console.warn('Geolocation error:', err);
@@ -211,6 +224,7 @@
     border-radius: 0.5rem;
     overflow: hidden;
     box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+    background-color: #f9fafb;
   }
 
   .map-container {
@@ -312,6 +326,11 @@
   @media (max-width: 768px) {
     .map-wrapper {
       border-radius: 0.25rem;
+      min-height: 250px;
+    }
+    
+    .map-container {
+      min-height: 250px;
     }
     
     .loading-text,
@@ -322,6 +341,62 @@
     .location-loading {
       top: 0.5rem;
       right: 0.5rem;
+      padding: 0.375rem;
+    }
+    
+    .location-spinner {
+      width: 0.875rem;
+      height: 0.875rem;
+    }
+  }
+
+  /* Tablet responsiveness */
+  @media (max-width: 1024px) and (min-width: 769px) {
+    .map-wrapper {
+      min-height: 350px;
+    }
+    
+    .map-container {
+      min-height: 350px;
+    }
+  }
+
+  /* Desktop large screens */
+  @media (min-width: 1280px) {
+    .map-wrapper {
+      border-radius: 0.75rem;
+    }
+  }
+
+  /* High DPI displays */
+  @media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 2dppx) {
+    .loading-spinner,
+    .location-spinner {
+      border-width: 0.5px;
+    }
+  }
+
+  /* Reduced motion preference */
+  @media (prefers-reduced-motion: reduce) {
+    .loading-spinner,
+    .location-spinner {
+      animation: none;
+    }
+    
+    .retry-button {
+      transition: none;
+    }
+  }
+
+  /* Print styles */
+  @media print {
+    .map-wrapper {
+      border: 1px solid #d1d5db;
+      box-shadow: none;
+    }
+    
+    .overlay {
+      display: none;
     }
   }
 </style>
