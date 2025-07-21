@@ -2,7 +2,7 @@ import { writable, derived, readable } from 'svelte/store'
 import { browser } from '$app/environment'
 import { supabase } from '$lib/supabase'
 import type { Session, User as SupabaseUser } from '@supabase/supabase-js'
-import type { User } from '$lib/types'
+import type { User } from '$lib/types/database'
 
 /**
  * Session store - tracks the current Supabase session
@@ -51,7 +51,7 @@ function mapSupabaseUser(supabaseUser: SupabaseUser): User {
 			  supabaseUser.user_metadata?.name || '',
 		avatar_url: supabaseUser.user_metadata?.avatar_url || '',
 		created_at: supabaseUser.created_at || new Date().toISOString(),
-		// updated_at: supabaseUser.updated_at || new Date().toISOString(), // TODO: Add to User type
+		updated_at: supabaseUser.updated_at || new Date().toISOString(),
 		last_login_at: supabaseUser.last_sign_in_at || undefined,
 		
 		// Default user preferences (can be updated later)

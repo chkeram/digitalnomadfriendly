@@ -408,6 +408,83 @@ export interface UpdateUserPreferencesRequest {
   work_style?: UserWorkStyle;
 }
 
+// Supabase Database Type Export
+export interface Database {
+  public: {
+    Tables: {
+      users: {
+        Row: User;
+        Insert: Omit<User, 'id' | 'created_at' | 'updated_at' | 'total_reviews' | 'total_venues_visited' | 'is_verified'>;
+        Update: Partial<Omit<User, 'id' | 'created_at'>>;
+      };
+      venues: {
+        Row: Venue;
+        Insert: Omit<Venue, 'id' | 'created_at' | 'updated_at' | 'overall_rating' | 'total_reviews'>;
+        Update: Partial<Omit<Venue, 'id' | 'created_at'>>;
+      };
+      reviews: {
+        Row: Review;
+        Insert: Omit<Review, 'id' | 'created_at' | 'updated_at' | 'helpful_votes' | 'total_votes' | 'is_flagged' | 'is_verified'>;
+        Update: Partial<Omit<Review, 'id' | 'created_at' | 'user_id' | 'venue_id'>>;
+      };
+      venue_amenities: {
+        Row: VenueAmenities;
+        Insert: Omit<VenueAmenities, 'id' | 'created_at' | 'updated_at'>;
+        Update: Partial<Omit<VenueAmenities, 'id' | 'created_at' | 'venue_id'>>;
+      };
+      venue_photos: {
+        Row: VenuePhoto;
+        Insert: Omit<VenuePhoto, 'id' | 'upload_date' | 'is_approved'>;
+        Update: Partial<Omit<VenuePhoto, 'id' | 'venue_id' | 'upload_date'>>;
+      };
+      review_photos: {
+        Row: ReviewPhoto;
+        Insert: Omit<ReviewPhoto, 'id' | 'created_at'>;
+        Update: Partial<Omit<ReviewPhoto, 'id' | 'review_id' | 'created_at'>>;
+      };
+      favorites: {
+        Row: Favorite;
+        Insert: Omit<Favorite, 'id' | 'created_at'>;
+        Update: Partial<Omit<Favorite, 'id' | 'user_id' | 'venue_id' | 'created_at'>>;
+      };
+      review_votes: {
+        Row: ReviewVote;
+        Insert: Omit<ReviewVote, 'id' | 'created_at'>;
+        Update: Partial<Omit<ReviewVote, 'id' | 'created_at'>>;
+      };
+      venue_visits: {
+        Row: VenueVisit;
+        Insert: Omit<VenueVisit, 'id'>;
+        Update: Partial<Omit<VenueVisit, 'id' | 'visit_date'>>;
+      };
+      venue_reports: {
+        Row: VenueReport;
+        Insert: Omit<VenueReport, 'id' | 'created_at' | 'status'>;
+        Update: Partial<Omit<VenueReport, 'id' | 'created_at' | 'venue_id' | 'reported_by_user_id'>>;
+      };
+    };
+    Views: {
+      [_ in never]: never;
+    };
+    Functions: {
+      [_ in never]: never;
+    };
+    Enums: {
+      user_work_style: UserWorkStyle;
+      preferred_seating: PreferredSeating;
+      day_of_week: DayOfWeek;
+      venue_status: VenueStatus;
+      visit_time_of_day: VisitTimeOfDay;
+      visit_purpose: VisitPurpose;
+      report_type: ReportType;
+      report_status: ReportStatus;
+    };
+    CompositeTypes: {
+      [_ in never]: never;
+    };
+  };
+}
+
 // Analytics Types
 
 export interface VenueAnalytics {

@@ -48,6 +48,10 @@ export function createSupabaseAdminClient() {
 			auth: {
 				autoRefreshToken: false,
 				persistSession: false
+			},
+			cookies: {
+				getAll: () => [],
+				setAll: () => {}
 			}
 		}
 	)
