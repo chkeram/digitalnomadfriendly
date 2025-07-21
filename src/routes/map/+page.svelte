@@ -1,6 +1,7 @@
 <script lang="ts">
   import MapContainer from '$lib/components/map/MapContainer.svelte';
-  import { locationStore, mapStore } from '$lib/stores';
+  import { locationStore } from '$lib/stores/location';
+  import { mapStore } from '$lib/stores/map';
   import { googleMapsService } from '$lib/services/maps.js';
   import { PUBLIC_GOOGLE_MAPS_API_KEY } from '$env/static/public';
   import type { LocationCoords } from '$lib/types';
@@ -28,31 +29,15 @@
   }
 
 
-  // API Key Test Function
+  // API Key Test Function (development only)
   async function testApiKey() {
-    console.log('=== API KEY TEST ===');
-    console.log('API Key exists:', !!PUBLIC_GOOGLE_MAPS_API_KEY);
-    console.log('API Key length:', PUBLIC_GOOGLE_MAPS_API_KEY?.length || 0);
-    console.log('API Key first 10 chars:', PUBLIC_GOOGLE_MAPS_API_KEY?.substring(0, 10) || 'N/A');
+    console.log('🔑 API Key Configuration Test');
+    console.log('API Key configured:', !!PUBLIC_GOOGLE_MAPS_API_KEY);
     
-    // Test direct API call
-    try {
-      const testUrl = `https://maps.googleapis.com/maps/api/js?key=${PUBLIC_GOOGLE_MAPS_API_KEY}&libraries=geometry&callback=__testCallback`;
-      console.log('Test URL (without key):', testUrl.replace(PUBLIC_GOOGLE_MAPS_API_KEY, 'HIDDEN_KEY'));
-      
-      // Simple fetch test to see if key works
-      const geocodeTestUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=New+York&key=${PUBLIC_GOOGLE_MAPS_API_KEY}`;
-      const response = await fetch(geocodeTestUrl);
-      const data = await response.json();
-      
-      console.log('Geocoding API test response:', data);
-      if (data.status === 'OK') {
-        console.log('✅ API Key is working - Geocoding API successful');
-      } else {
-        console.log('❌ API Key issue - Status:', data.status, 'Error:', data.error_message);
-      }
-    } catch (error) {
-      console.error('❌ API test failed:', error);
+    if (PUBLIC_GOOGLE_MAPS_API_KEY) {
+      console.log('✅ Google Maps API key is configured');
+    } else {
+      console.log('❌ Google Maps API key is missing');
     }
   }
 
@@ -60,12 +45,13 @@
   async function testCostOptimization() {
     try {
       const stats = googleMapsService.getCostOptimizationStats();
-      console.log('=== COST OPTIMIZATION STATS ===');
-      console.log('Usage Stats:', stats.usage);
-      console.log('Budget Status:', stats.budget);
-      console.log('Cache Stats:', stats.cache);
+      console.log('💰 Cost Optimization Stats');
+      console.log('Daily budget status:', stats.budget.withinBudget ? '✅ Within budget' : '⚠️ Over budget');
+      console.log('API usage today:', stats.usage.costs.daily.toFixed(2), 'USD');
+      console.log('Cache items:', stats.cache.size, 'Total hits:', stats.cache.totalHits);
+      console.log('Usage breakdown:', stats.usage.costs.breakdown);
     } catch (error) {
-      console.error('Cost optimization test failed:', error);
+      console.error('❌ Cost optimization test failed:', error);
     }
   }
 </script>
@@ -166,6 +152,8 @@
       center={selectedLocation}
       height={mapHeight}
       enableCurrentLocation={true}
+      showVenues={true}
+      venueSearchRadius={5000}
       className="border border-gray-200"
     />
   </div>
@@ -194,6 +182,11 @@
               Lat: {$locationStore.currentLocation.lat.toFixed(6)}<br>
               Lng: {$locationStore.currentLocation.lng.toFixed(6)}
             </div>
+          </div>
+        {:else}
+          <div>
+            <span class="text-gray-600">Current Location:</span>
+            <span class="text-gray-400 italic">Not detected</span>
           </div>
         {/if}
         
@@ -225,13 +218,20 @@
           <span class="font-medium">{$mapStore.zoom}</span>
         </div>
         
-        <div>
-          <span class="text-gray-600">Center:</span>
-          <div class="text-sm font-mono bg-gray-100 rounded p-2 mt-1">
-            Lat: {$mapStore.center.lat.toFixed(6)}<br>
-            Lng: {$mapStore.center.lng.toFixed(6)}
+        {#if $mapStore.center}
+          <div>
+            <span class="text-gray-600">Center:</span>
+            <div class="text-sm font-mono bg-gray-100 rounded p-2 mt-1">
+              Lat: {$mapStore.center.lat.toFixed(6)}<br>
+              Lng: {$mapStore.center.lng.toFixed(6)}
+            </div>
           </div>
-        </div>
+        {:else}
+          <div>
+            <span class="text-gray-600">Center:</span>
+            <span class="text-gray-400 italic">Not set</span>
+          </div>
+        {/if}
         
         {#if $mapStore.error}
           <div class="text-red-600 text-sm">

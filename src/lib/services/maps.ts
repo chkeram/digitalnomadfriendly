@@ -64,7 +64,7 @@ export class GoogleMapsService {
       const loader = new Loader({
         apiKey: PUBLIC_GOOGLE_MAPS_API_KEY,
         version: 'weekly',
-        libraries: ['places', 'geometry'],
+        libraries: ['places', 'geometry', 'marker'],
         region: 'US',
         language: 'en'
       });
@@ -118,6 +118,7 @@ export class GoogleMapsService {
       zoomControl: true,
       gestureHandling: 'cooperative',
       styles: this.getOptimizedMapStyles(),
+      mapId: 'DEMO_MAP_ID', // Required for Advanced Markers
       ...options
     };
 
@@ -133,9 +134,10 @@ export class GoogleMapsService {
 
   /**
    * Get current location with improved error handling and caching
+   * Returns a plain LocationCoords object to avoid caching issues with LatLng methods
    */
   public getCurrentLocation = withCache(
-    async (): Promise<google.maps.LatLng> => {
+    async (): Promise<{ lat: number; lng: number }> => {
       if (!browser) {
         throw new Error('Geolocation can only be accessed in the browser');
       }
@@ -155,7 +157,11 @@ export class GoogleMapsService {
         navigator.geolocation.getCurrentPosition(
           (position) => {
             clearTimeout(timeoutId);
-            resolve(new maps.LatLng(position.coords.latitude, position.coords.longitude));
+            // Return plain object instead of LatLng to avoid caching issues
+            resolve({
+              lat: position.coords.latitude,
+              lng: position.coords.longitude
+            });
           },
           (error) => {
             clearTimeout(timeoutId);

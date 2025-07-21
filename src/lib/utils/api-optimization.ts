@@ -35,53 +35,56 @@ export interface QuotaUsage {
  * Optimized field masks for different use cases
  */
 export const OPTIMIZED_FIELD_MASKS = {
-  // Minimal venue data for list views (1 field = $0.017 per 1K requests)
+  // Minimal venue data for list views (New Places API fields)
   VENUE_LIST: [
-    'place_id',
-    'name', 
-    'geometry/location',
-    'business_status',
-    'price_level',
+    'id',
+    'displayName',
+    'location',
+    'businessStatus',
+    'priceLevel',
     'rating'
   ],
   
-  // Basic venue details for cards (6 fields = $0.102 per 1K requests)
+  // Basic venue details for cards (New Places API fields)
   VENUE_BASIC: [
-    'place_id',
-    'name',
-    'formatted_address',
-    'geometry/location',
-    'business_status',
-    'opening_hours/open_now',
-    'price_level',
+    'id',
+    'displayName',
+    'formattedAddress',
+    'location',
+    'businessStatus',
+    'regularOpeningHours',
+    'priceLevel',
     'rating',
-    'user_ratings_total',
-    'photos'
+    'userRatingCount',
+    'photos',
+    'types'
   ],
   
-  // Full venue details for detail view (careful with field count)
+  // Full venue details for detail view (New Places API fields)
   VENUE_FULL: [
-    'place_id',
-    'name',
-    'formatted_address',
-    'geometry/location',
-    'business_status',
-    'opening_hours',
-    'price_level',
+    'id',
+    'displayName',
+    'formattedAddress',
+    'location',
+    'businessStatus',
+    'regularOpeningHours',
+    'priceLevel',
     'rating',
-    'user_ratings_total',
+    'userRatingCount',
     'reviews',
     'photos',
-    'formatted_phone_number',
-    'website',
-    'wifi_access_point'
+    'nationalPhoneNumber',
+    'websiteURI',
+    'accessibilityOptions',
+    'paymentOptions',
+    'types'
   ],
   
-  // Autocomplete optimized (3 fields = $0.051 per 1K requests)
+  // Autocomplete optimized (New Places API fields)
   AUTOCOMPLETE: [
-    'place_id',
-    'name',
-    'formatted_address'
+    'id',
+    'displayName',
+    'formattedAddress'
   ]
 } as const;
 
@@ -175,6 +178,9 @@ export class ApiOptimizationManager {
       case 'placeDetails':
         this.quotaUsage.placesRequests += count;
         break;
+      case 'placesSearch':
+        this.quotaUsage.placesRequests += count; // Places search also counts as places requests
+        break;
       case 'autocomplete':
         this.quotaUsage.placesAutocomplete += count;
         break;
@@ -191,8 +197,7 @@ export class ApiOptimizationManager {
     const costs = {
       mapLoads: (this.quotaUsage.mapLoads / 1000) * this.costPerRequest.mapLoad,
       geocoding: (this.quotaUsage.geocodingRequests / 1000) * this.costPerRequest.geocoding,
-      placeDetails: (this.quotaUsage.placesRequests / 1000) * this.costPerRequest.placeDetails,
-      placesSearch: 0, // Will be calculated based on search requests
+      placesRequests: (this.quotaUsage.placesRequests / 1000) * this.costPerRequest.placeDetails, // Includes both details and search
       autocomplete: (this.quotaUsage.placesAutocomplete / 1000) * this.costPerRequest.autocomplete
     };
     

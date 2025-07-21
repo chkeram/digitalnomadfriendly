@@ -1,8 +1,11 @@
 <script lang="ts">
   import { browser } from '$app/environment';
   import { googleMapsService } from '$lib/services/maps.js';
+  import { placesService, type Venue } from '$lib/services/places.js';
   import { mapStore, locationStore } from '$lib/stores';
   import { mapErrorBoundary } from '$lib/utils/error-boundary.js';
+  import VenueMarker from './VenueMarker.svelte';
+  import VenueInfoWindow from './VenueInfoWindow.svelte';
   import type { LocationCoords } from '$lib/types';
 
   // Props using Svelte 5 runes
@@ -13,6 +16,8 @@
     width?: string;
     className?: string;
     enableCurrentLocation?: boolean;
+    showVenues?: boolean;
+    venueSearchRadius?: number;
   }
   
   const {
@@ -21,7 +26,9 @@
     height = '400px',
     width = '100%',
     className = '',
-    enableCurrentLocation = true
+    enableCurrentLocation = true,
+    showVenues = false,
+    venueSearchRadius = 2000
   }: Props = $props();
 
   // State using Svelte 5 runes
@@ -31,20 +38,27 @@
   let error = $state<string | null>(null);
   let isLoading = $state(false);
 
+  // Venue-related state
+  let venues = $state<Venue[]>([]);
+  let selectedVenue = $state<Venue | null>(null);
+  let isLoadingVenues = $state(false);
+  let venueSearchLocation = $state<LocationCoords | null>(null);
+  let isMarkerPan = $state(false); // Track if pan is from marker selection
+
   // Map initialization with $effect - wait for DOM element to be bound
   $effect(() => {
     if (!browser) return;
     
     // Check if mapContainer is available and has dimensions
     if (mapContainer && mapContainer.offsetWidth > 0) {
-      console.log('$effect triggered - DOM ready, initializing map');
+      console.log('🗺️ Initializing Google Maps...');
       initializeMap();
     }
 
     // Cleanup function
     return () => {
       if (map) {
-        console.log('Cleaning up map instance');
+        console.log('🧹 Cleaning up map resources');
         google.maps.event.clearInstanceListeners(map);
       }
     };
@@ -53,7 +67,6 @@
   // Center change effect
   $effect(() => {
     if (map && center) {
-      console.log('Updating map center:', center);
       map.setCenter(new google.maps.LatLng(center.lat, center.lng));
     }
   });
@@ -61,22 +74,18 @@
   // Zoom change effect
   $effect(() => {
     if (map && zoom) {
-      console.log('Updating map zoom:', zoom);
       map.setZoom(zoom);
     }
   });
 
   async function initializeMap() {
     if (isInitialized || !mapContainer) {
-      console.log('Skipping initialization - isInitialized:', isInitialized, 'mapContainer:', !!mapContainer);
       return;
     }
 
     // Wrap initialization in error boundary
     const safeInitialize = mapErrorBoundary.wrapAsync(async () => {
-      console.log('Starting map initialization...');
-      console.log('mapContainer element:', mapContainer);
-      console.log('mapContainer dimensions:', mapContainer.offsetWidth, 'x', mapContainer.offsetHeight);
+      console.log('🚀 Starting map initialization...');
       
       isLoading = true;
       error = null;
@@ -85,14 +94,14 @@
 
       // Load Google Maps API
       const maps = await googleMapsService.loadMaps();
-      console.log('Google Maps API loaded successfully');
+      console.log('✅ Google Maps API loaded');
 
       // Set up map center - always provide a default
       const mapCenter = center 
         ? new maps.LatLng(center.lat, center.lng)
         : new maps.LatLng(40.7128, -74.0060); // Default NYC
 
-      // Create map with minimal, reliable options
+      // Create map with minimal, reliable options including Map ID for Advanced Markers
       const mapOptions: google.maps.MapOptions = {
         center: mapCenter,
         zoom: zoom,
@@ -100,11 +109,11 @@
         streetViewControl: true,
         fullscreenControl: true,
         zoomControl: true,
-        gestureHandling: 'cooperative'
+        gestureHandling: 'cooperative',
+        mapId: 'DEMO_MAP_ID' // Required for Advanced Markers
       };
 
-      console.log('Creating map with options:', mapOptions);
-      console.log('About to create map with element:', mapContainer);
+      // Create map instance
       
       // Ensure mapContainer is not null before passing to Google Maps
       if (!mapContainer) {
@@ -112,7 +121,7 @@
       }
       
       map = new maps.Map(mapContainer, mapOptions);
-      console.log('Map created successfully:', map);
+      console.log('🗺️ Map instance created successfully');
 
       // Update stores
       mapStore.setMap(map);
@@ -122,6 +131,14 @@
       // Get current location if enabled and no center provided
       if (enableCurrentLocation && !center) {
         getCurrentLocation();
+      }
+
+      // Search for venues if enabled
+      if (showVenues) {
+        const searchCenter = center || (await getCurrentLocationCoords());
+        if (searchCenter) {
+          searchNearbyVenues(searchCenter);
+        }
       }
 
       return map;
@@ -142,23 +159,23 @@
     if (!enableCurrentLocation) return;
 
     const safeGetLocation = mapErrorBoundary.wrapAsync(async () => {
-      console.log('Getting current location...');
+      console.log('📍 Getting current location...');
       locationStore.setLoading(true);
       locationStore.clearError();
 
       const location = await googleMapsService.getCurrentLocation();
       const coords: LocationCoords = {
-        lat: location.lat(),
-        lng: location.lng()
+        lat: location.lat,
+        lng: location.lng
       };
 
-      console.log('Current location obtained:', coords);
+      console.log('✅ Location detected');
       locationStore.setCurrentLocation(coords);
       locationStore.setPermissionStatus('granted');
 
       // Pan to current location if no center was provided
       if (map && !center) {
-        map.panTo(location);
+        map.panTo(new google.maps.LatLng(coords.lat, coords.lng));
       }
 
       return coords;
@@ -174,8 +191,113 @@
     }
   }
 
+  async function getCurrentLocationCoords(): Promise<LocationCoords | null> {
+    try {
+      const location = await googleMapsService.getCurrentLocation();
+      return {
+        lat: location.lat,
+        lng: location.lng
+      };
+    } catch (error) {
+      console.warn('Could not get current location for venue search:', error);
+      return null;
+    }
+  }
+
+  async function searchNearbyVenues(searchLocation: LocationCoords) {
+    if (isLoadingVenues) return;
+
+    try {
+      isLoadingVenues = true;
+      venueSearchLocation = searchLocation;
+
+      const foundVenues = await placesService.searchNearbyVenues({
+        location: searchLocation,
+        radius: venueSearchRadius,
+        types: ['cafe', 'restaurant', 'library']
+      });
+
+      venues = foundVenues;
+      console.log(`🎯 Found ${foundVenues.length} venues nearby`);
+
+    } catch (error) {
+      console.error('Venue search failed:', error);
+      // Don't show venue search errors to user, just log them
+    } finally {
+      isLoadingVenues = false;
+    }
+  }
+
+  // Venue marker event handlers
+  function handleMarkerClick(event: CustomEvent<{ venueId: string; position: LocationCoords }>) {
+    const { venueId } = event.detail;
+    const venue = venues.find(v => v.id === venueId);
+    if (venue) {
+      selectedVenue = selectedVenue?.id === venueId ? null : venue;
+      
+      // Center map on selected venue with marker pan flag
+      if (map && selectedVenue) {
+        isMarkerPan = true; // Set flag before panning
+        map.panTo(new google.maps.LatLng(venue.position.lat, venue.position.lng));
+        
+        // Reset flag after a short delay
+        setTimeout(() => {
+          isMarkerPan = false;
+        }, 1000);
+      }
+    }
+  }
+
+  function handleMarkerHover(event: CustomEvent<{ venueId: string; position: LocationCoords }>) {
+    // Could implement hover effects here
+  }
+
+  // Effect to search venues when map viewport changes significantly
+  $effect(() => {
+    if (!showVenues || !map || isLoadingVenues) return;
+
+    // Listen for significant map changes (idle after zoom/pan)
+    const listener = map?.addListener('idle', () => {
+      // Skip venue search if this is just a marker pan
+      if (isMarkerPan) return;
+      
+      const currentCenter = map?.getCenter();
+      if (!currentCenter) return;
+
+      const newCenter: LocationCoords = {
+        lat: currentCenter.lat(),
+        lng: currentCenter.lng()
+      };
+
+      // Only search if we've moved significantly from last search location
+      if (!venueSearchLocation || getDistance(newCenter, venueSearchLocation) > 1000) { // 1km threshold
+        console.log(`🔄 Map moved ${venueSearchLocation ? getDistance(newCenter, venueSearchLocation).toFixed(0) + 'm' : 'initial'} - searching for venues`);
+        searchNearbyVenues(newCenter);
+      }
+    });
+
+    return () => {
+      google.maps.event.removeListener(listener);
+    };
+  });
+
+  function getDistance(pos1: LocationCoords, pos2: LocationCoords): number {
+    const R = 6371e3; // Earth's radius in meters
+    const φ1 = pos1.lat * Math.PI/180;
+    const φ2 = pos2.lat * Math.PI/180;
+    const Δφ = (pos2.lat-pos1.lat) * Math.PI/180;
+    const Δλ = (pos2.lng-pos1.lng) * Math.PI/180;
+
+    const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+              Math.cos(φ1) * Math.cos(φ2) *
+              Math.sin(Δλ/2) * Math.sin(Δλ/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+    return R * c;
+  }
+
   function retry() {
-    console.log('Retrying map initialization...');
+    console.log('🔄 Retrying map initialization...');
     isInitialized = false;
     map = null;
     error = null;
@@ -207,6 +329,40 @@
       <button class="retry-button" onclick={retry}>
         Retry
       </button>
+    </div>
+  {/if}
+
+  <!-- Venue markers -->
+  {#if showVenues}
+    {#each venues as venue (venue.id)}
+      <VenueMarker
+        position={venue.position}
+        title={venue.name}
+        venueId={venue.id}
+        venueType={venue.venueType}
+        rating={venue.rating}
+        isSelected={selectedVenue?.id === venue.id}
+        {map}
+        on:markerClick={handleMarkerClick}
+        on:markerHover={handleMarkerHover}
+      />
+    {/each}
+  {/if}
+
+  <!-- Venue InfoWindow -->
+  {#if showVenues}
+    <VenueInfoWindow
+      venue={selectedVenue}
+      {map}
+      isVisible={selectedVenue !== null}
+    />
+  {/if}
+
+  <!-- Venues loading indicator -->
+  {#if isLoadingVenues}
+    <div class="venues-loading">
+      <div class="venues-spinner"></div>
+      <span class="venues-loading-text">Finding venues...</span>
     </div>
   {/if}
 
@@ -315,6 +471,35 @@
     border-top: 2px solid #3b82f6;
     border-radius: 50%;
     animation: spin 1s linear infinite;
+  }
+
+  .venues-loading {
+    position: absolute;
+    top: 1rem;
+    left: 1rem;
+    background-color: white;
+    border-radius: 0.375rem;
+    padding: 0.5rem 0.75rem;
+    box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    z-index: 10;
+  }
+
+  .venues-spinner {
+    width: 1rem;
+    height: 1rem;
+    border: 2px solid #e5e7eb;
+    border-top: 2px solid #8b5cf6;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+
+  .venues-loading-text {
+    font-size: 0.875rem;
+    color: #6b7280;
+    font-weight: 500;
   }
 
   @keyframes spin {
