@@ -1,9 +1,9 @@
-import { Loader } from '@googlemaps/js-api-loader';
+import { browser } from '$app/environment';
 import { PUBLIC_GOOGLE_MAPS_API_KEY } from '$env/static/public';
 
 export class GoogleMapsService {
   private static instance: GoogleMapsService;
-  private loader: Loader;
+  private loader: any = null;
   private mapsPromise: Promise<typeof google.maps> | null = null;
   private isLoaded = false;
 
@@ -11,14 +11,6 @@ export class GoogleMapsService {
     if (!PUBLIC_GOOGLE_MAPS_API_KEY) {
       throw new Error('Google Maps API key is not configured');
     }
-
-    this.loader = new Loader({
-      apiKey: PUBLIC_GOOGLE_MAPS_API_KEY,
-      version: 'weekly',
-      libraries: ['places', 'geometry'],
-      region: 'US',
-      language: 'en'
-    });
   }
 
   public static getInstance(): GoogleMapsService {
@@ -28,19 +20,57 @@ export class GoogleMapsService {
     return GoogleMapsService.instance;
   }
 
+  private async initializeLoader() {
+    if (this.loader || !browser) return;
+    
+    try {
+      const { Loader } = await import('@googlemaps/js-api-loader');
+      this.loader = new Loader({
+        apiKey: PUBLIC_GOOGLE_MAPS_API_KEY,
+        version: 'weekly',
+        libraries: ['places', 'geometry'],
+        region: 'US',
+        language: 'en'
+      });
+    } catch (error) {
+      console.error('Failed to initialize Google Maps loader:', error);
+      throw new Error('Failed to load Google Maps API');
+    }
+  }
+
   public async loadMaps(): Promise<typeof google.maps> {
+    if (!browser) {
+      throw new Error('Google Maps can only be loaded in the browser');
+    }
+
     if (this.isLoaded && window.google?.maps) {
       return window.google.maps;
     }
 
     if (!this.mapsPromise) {
+      await this.initializeLoader();
+      
+      if (!this.loader) {
+        throw new Error('Failed to initialize Google Maps loader');
+      }
+
       this.mapsPromise = this.loader.load().then(() => {
         this.isLoaded = true;
+        if (!window.google?.maps) {
+          throw new Error('Google Maps failed to load properly');
+        }
         return window.google.maps;
+      }).catch((error: Error) => {
+        console.error('Google Maps API load failed:', error);
+        throw error;
       });
     }
 
-    return this.mapsPromise;
+    const result = await this.mapsPromise;
+    if (!result) {
+      throw new Error('Google Maps failed to initialize');
+    }
+    return result;
   }
 
   public async createMap(
@@ -51,7 +81,7 @@ export class GoogleMapsService {
     
     const defaultOptions: google.maps.MapOptions = {
       zoom: 12,
-      center: { lat: 40.7128, lng: -74.0060 }, // Default to NYC
+      center: new maps.LatLng(40.7128, -74.0060), // Default to NYC
       mapTypeControl: false,
       streetViewControl: true,
       fullscreenControl: true,
@@ -60,11 +90,17 @@ export class GoogleMapsService {
       ...options
     };
 
-    return new maps.Map(element, defaultOptions);
+    const map = new maps.Map(element, defaultOptions);
+    
+    // Ensure proper initialization
+    setTimeout(() => {
+      maps.event.trigger(map, 'resize');
+    }, 100);
+
+    return map;
   }
 
   private getCustomMapStyles(): google.maps.MapTypeStyle[] {
-    // Custom styling for a clean, modern look
     return [
       {
         featureType: 'poi',
@@ -95,6 +131,10 @@ export class GoogleMapsService {
   }
 
   public async getCurrentLocation(): Promise<google.maps.LatLng> {
+    if (!browser) {
+      throw new Error('Geolocation can only be accessed in the browser');
+    }
+
     const maps = await this.loadMaps();
     
     return new Promise((resolve, reject) => {
@@ -120,7 +160,7 @@ export class GoogleMapsService {
   }
 
   public isApiLoaded(): boolean {
-    return this.isLoaded && !!window.google?.maps;
+    return browser && this.isLoaded && !!window.google?.maps;
   }
 }
 

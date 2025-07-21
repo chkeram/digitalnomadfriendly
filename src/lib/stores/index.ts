@@ -16,6 +16,27 @@ export {
   clearAuthError
 } from './auth';
 
+// Re-export location stores from dedicated location module
+export {
+  locationStore,
+  currentLocation,
+  isLocationLoading,
+  locationError,
+  hasLocationPermission
+} from './location';
+
+// Re-export map stores from dedicated map module
+export {
+  mapStore,
+  mapInstance,
+  mapCenter as mapCenterStore,
+  mapZoom as mapZoomStore,
+  mapBounds,
+  isMapLoaded,
+  isMapLoading,
+  mapError
+} from './map';
+
 // Location store
 export const userLocation = writable<LocationCoords | null>(null);
 
