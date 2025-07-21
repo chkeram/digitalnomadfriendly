@@ -1,6 +1,7 @@
 <script lang="ts">
   import MapContainer from '$lib/components/map/MapContainer.svelte';
   import { locationStore, mapStore } from '$lib/stores';
+  import { googleMapsService } from '$lib/services/maps.js';
   import { PUBLIC_GOOGLE_MAPS_API_KEY } from '$env/static/public';
   import type { LocationCoords } from '$lib/types';
 
@@ -54,6 +55,19 @@
       console.error('❌ API test failed:', error);
     }
   }
+
+  // Cost optimization test
+  async function testCostOptimization() {
+    try {
+      const stats = googleMapsService.getCostOptimizationStats();
+      console.log('=== COST OPTIMIZATION STATS ===');
+      console.log('Usage Stats:', stats.usage);
+      console.log('Budget Status:', stats.budget);
+      console.log('Cache Stats:', stats.cache);
+    } catch (error) {
+      console.error('Cost optimization test failed:', error);
+    }
+  }
 </script>
 
 <svelte:head>
@@ -70,7 +84,7 @@
   <div class="bg-white rounded-lg shadow-md p-6">
     <h2 class="text-xl font-semibold mb-4">Map Controls</h2>
     
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-4">
       <div>
         <label for="mapHeight" class="block text-sm font-medium text-gray-700 mb-2">Map Height</label>
         <select id="mapHeight" bind:value={mapHeight} class="w-full border border-gray-300 rounded-md px-3 py-2">
@@ -109,6 +123,15 @@
           class="w-full bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700"
         >
           Test API Key
+        </button>
+      </div>
+
+      <div>
+        <button 
+          onclick={testCostOptimization}
+          class="w-full bg-purple-600 text-white px-4 py-2 rounded-md hover:bg-purple-700"
+        >
+          Test Cost Optimization
         </button>
       </div>
 

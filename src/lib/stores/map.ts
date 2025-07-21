@@ -130,8 +130,11 @@ function createMapStore() {
     }),
     fitBounds: (bounds: google.maps.LatLngBounds, padding?: number) => update(state => {
       if (state.map) {
-        const options = padding ? { padding } : undefined;
-        state.map.fitBounds(bounds, options);
+        if (padding !== undefined) {
+          state.map.fitBounds(bounds, padding);
+        } else {
+          state.map.fitBounds(bounds);
+        }
       }
       return {
         ...state,

@@ -1,5 +1,7 @@
 import { browser } from '$app/environment';
 import { PUBLIC_GOOGLE_MAPS_API_KEY } from '$env/static/public';
+import { apiOptimizer } from '$lib/utils/api-optimization.js';
+import { mapsCache, withCache } from '$lib/utils/maps-cache.js';
 
 /**
  * Optimized Google Maps service with streamlined initialization
@@ -43,7 +45,12 @@ export class GoogleMapsService {
       this.mapsPromise = this.initializeMapsAPI();
     }
 
-    return this.mapsPromise;
+    const result = await this.mapsPromise;
+    
+    // Track API usage for cost monitoring
+    apiOptimizer.trackUsage('mapLoad');
+    
+    return result;
   }
 
   /**
@@ -125,48 +132,52 @@ export class GoogleMapsService {
   }
 
   /**
-   * Get current location with improved error handling
+   * Get current location with improved error handling and caching
    */
-  public async getCurrentLocation(): Promise<google.maps.LatLng> {
-    if (!browser) {
-      throw new Error('Geolocation can only be accessed in the browser');
-    }
-
-    const maps = await this.loadMaps();
-    
-    return new Promise((resolve, reject) => {
-      if (!navigator.geolocation) {
-        reject(new Error('Geolocation is not supported by this browser'));
-        return;
+  public getCurrentLocation = withCache(
+    async (): Promise<google.maps.LatLng> => {
+      if (!browser) {
+        throw new Error('Geolocation can only be accessed in the browser');
       }
 
-      const timeoutId = setTimeout(() => {
-        reject(new Error('Geolocation request timed out'));
-      }, 15000); // 15 second timeout
-
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          clearTimeout(timeoutId);
-          resolve(new maps.LatLng(position.coords.latitude, position.coords.longitude));
-        },
-        (error) => {
-          clearTimeout(timeoutId);
-          const errorMessages = {
-            [error.PERMISSION_DENIED]: 'Location access denied by user',
-            [error.POSITION_UNAVAILABLE]: 'Location information unavailable',
-            [error.TIMEOUT]: 'Location request timed out'
-          };
-          const message = errorMessages[error.code] || `Geolocation error: ${error.message}`;
-          reject(new Error(message));
-        },
-        {
-          enableHighAccuracy: true,
-          timeout: 10000,
-          maximumAge: 300000 // 5 minutes cache
+      const maps = await this.loadMaps();
+      
+      return new Promise((resolve, reject) => {
+        if (!navigator.geolocation) {
+          reject(new Error('Geolocation is not supported by this browser'));
+          return;
         }
-      );
-    });
-  }
+
+        const timeoutId = setTimeout(() => {
+          reject(new Error('Geolocation request timed out'));
+        }, 15000); // 15 second timeout
+
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            clearTimeout(timeoutId);
+            resolve(new maps.LatLng(position.coords.latitude, position.coords.longitude));
+          },
+          (error) => {
+            clearTimeout(timeoutId);
+            const errorMessages: { [key: number]: string } = {
+              [error.PERMISSION_DENIED]: 'Location access denied by user',
+              [error.POSITION_UNAVAILABLE]: 'Location information unavailable',
+              [error.TIMEOUT]: 'Location request timed out'
+            };
+            const message = errorMessages[error.code] || `Geolocation error: ${error.message}`;
+            reject(new Error(message));
+          },
+          {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 300000 // 5 minutes cache
+          }
+        );
+      });
+    },
+    () => 'current_location', // Cache key
+    1000 * 60 * 5 // 5 minute TTL
+  );
 
   /**
    * Optimized map styles for better performance and appearance
@@ -219,6 +230,84 @@ export class GoogleMapsService {
   public reset(): void {
     this.mapsPromise = null;
     this.isLoaded = false;
+  }
+
+  /**
+   * Get cost optimization stats
+   */
+  public getCostOptimizationStats() {
+    return {
+      usage: apiOptimizer.getUsageStats(),
+      budget: apiOptimizer.checkBudgetStatus(),
+      cache: mapsCache.getStats()
+    };
+  }
+
+  /**
+   * Create optimized geocoding service with caching
+   */
+  public async createOptimizedGeocodingService() {
+    const maps = await this.loadMaps();
+    const geocoder = new maps.Geocoder();
+
+    return {
+      geocode: withCache(
+        async (request: google.maps.GeocoderRequest): Promise<google.maps.GeocoderResult[]> => {
+          // Check budget before expensive operation
+          if (!apiOptimizer.shouldMakeRequest('geocoding')) {
+            throw new Error('Daily API budget exceeded for geocoding');
+          }
+
+          return new Promise((resolve, reject) => {
+            geocoder.geocode(request, (results, status) => {
+              if (status === 'OK' && results) {
+                apiOptimizer.trackUsage('geocoding');
+                resolve(results);
+              } else {
+                reject(new Error(`Geocoding failed: ${status}`));
+              }
+            });
+          });
+        },
+        (request) => `geocode:${JSON.stringify(request)}`,
+        1000 * 60 * 60 * 24 // 24h cache for geocoding
+      )
+    };
+  }
+
+  /**
+   * Create optimized Places service with session tokens and field masking
+   */
+  public async createOptimizedPlacesService() {
+    const maps = await this.loadMaps();
+    const service = new maps.places.PlacesService(document.createElement('div'));
+
+    return {
+      getDetails: withCache(
+        async (request: google.maps.places.PlaceDetailsRequest): Promise<google.maps.places.PlaceResult> => {
+          // Check budget before expensive operation
+          if (!apiOptimizer.shouldMakeRequest('placeDetails', request.fields?.length || 1)) {
+            throw new Error('Daily API budget exceeded for place details');
+          }
+
+          // Optimize request with field masking
+          const optimizedRequest = apiOptimizer.optimizePlacesRequest(request, 'VENUE_BASIC');
+
+          return new Promise((resolve, reject) => {
+            service.getDetails(optimizedRequest, (place, status) => {
+              if (status === maps.places.PlacesServiceStatus.OK && place) {
+                apiOptimizer.trackUsage('placeDetails', 1, optimizedRequest.fields?.length || 1);
+                resolve(place);
+              } else {
+                reject(new Error(`Places service failed: ${status}`));
+              }
+            });
+          });
+        },
+        (request) => `place_details:${request.placeId}:${request.fields?.join(',') || 'default'}`,
+        1000 * 60 * 60 * 6 // 6h cache for place details
+      )
+    };
   }
 }
 

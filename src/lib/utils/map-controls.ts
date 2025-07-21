@@ -284,7 +284,9 @@ export class MapControlsManager {
       // Trigger map resize
       if (this.map) {
         setTimeout(() => {
-          google.maps.event.trigger(this.map, 'resize');
+          if (this.map) {
+            google.maps.event.trigger(this.map, 'resize');
+          }
         }, 100);
       }
     });
