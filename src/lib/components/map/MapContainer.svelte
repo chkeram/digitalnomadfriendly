@@ -18,6 +18,10 @@
     enableCurrentLocation?: boolean;
     showVenues?: boolean;
     venueSearchRadius?: number;
+    venueTypeFilter?: string[];
+    searchQuery?: string;
+    minRating?: number;
+    maxPriceLevel?: number;
   }
   
   const {
@@ -28,7 +32,11 @@
     className = '',
     enableCurrentLocation = true,
     showVenues = false,
-    venueSearchRadius = 2000
+    venueSearchRadius = 2000,
+    venueTypeFilter = undefined,
+    searchQuery = undefined,
+    minRating = undefined,
+    maxPriceLevel = undefined
   }: Props = $props();
 
   // State using Svelte 5 runes
@@ -40,6 +48,7 @@
 
   // Venue-related state
   let venues = $state<Venue[]>([]);
+  let filteredVenues = $state<Venue[]>([]);
   let selectedVenue = $state<Venue | null>(null);
   let isLoadingVenues = $state(false);
   let venueSearchLocation = $state<LocationCoords | null>(null);
@@ -89,8 +98,6 @@
       
       isLoading = true;
       error = null;
-      mapStore.setLoading(true);
-      mapStore.clearError();
 
       // Load Google Maps API
       const maps = await googleMapsService.loadMaps();
@@ -123,14 +130,14 @@
       map = new maps.Map(mapContainer, mapOptions);
       console.log('🗺️ Map instance created successfully');
 
-      // Update stores
-      mapStore.setMap(map);
+      // Update local state
       isInitialized = true;
       isLoading = false;
 
       // Get current location if enabled and no center provided
       if (enableCurrentLocation && !center) {
-        getCurrentLocation();
+        // Use setTimeout to avoid updating stores within effect
+        setTimeout(() => getCurrentLocation(), 0);
       }
 
       // Search for venues if enabled
@@ -151,7 +158,6 @@
       console.error('Map initialization failed:', err);
       error = errorMessage;
       isLoading = false;
-      mapStore.setError(errorMessage);
     }
   }
 
@@ -160,8 +166,6 @@
 
     const safeGetLocation = mapErrorBoundary.wrapAsync(async () => {
       console.log('📍 Getting current location...');
-      locationStore.setLoading(true);
-      locationStore.clearError();
 
       const location = await googleMapsService.getCurrentLocation();
       const coords: LocationCoords = {
@@ -170,8 +174,6 @@
       };
 
       console.log('✅ Location detected');
-      locationStore.setCurrentLocation(coords);
-      locationStore.setPermissionStatus('granted');
 
       // Pan to current location if no center was provided
       if (map && !center) {
@@ -186,8 +188,11 @@
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to get current location';
       console.warn('Geolocation error:', err);
-      locationStore.setError(errorMessage);
-      locationStore.setPermissionStatus('denied');
+      // Use setTimeout to avoid updating stores within effect
+      setTimeout(() => {
+        locationStore.setError(errorMessage);
+        locationStore.setPermissionStatus('denied');
+      }, 0);
     }
   }
 
@@ -211,14 +216,28 @@
       isLoadingVenues = true;
       venueSearchLocation = searchLocation;
 
-      const foundVenues = await placesService.searchNearbyVenues({
-        location: searchLocation,
-        radius: venueSearchRadius,
-        types: ['cafe', 'restaurant', 'library']
-      });
+      let foundVenues: Venue[] = [];
+
+      // If there's a search query, use text search
+      if (searchQuery && searchQuery.trim()) {
+        console.log(`🔍 Text search: "${searchQuery}"`);
+        foundVenues = await placesService.searchVenuesByText(searchQuery, searchLocation);
+      } else {
+        // Use nearby search with type filters
+        const searchTypes = venueTypeFilter && venueTypeFilter.length > 0 
+          ? venueTypeFilter 
+          : ['cafe', 'restaurant', 'library'];
+        
+        console.log(`📍 Nearby search with types: ${searchTypes.join(', ')}`);
+        foundVenues = await placesService.searchNearbyVenues({
+          location: searchLocation,
+          radius: venueSearchRadius,
+          types: searchTypes
+        });
+      }
 
       venues = foundVenues;
-      console.log(`🎯 Found ${foundVenues.length} venues nearby`);
+      console.log(`🎯 Found ${foundVenues.length} venues`);
 
     } catch (error) {
       console.error('Venue search failed:', error);
@@ -231,7 +250,7 @@
   // Venue marker event handlers
   function handleMarkerClick(event: CustomEvent<{ venueId: string; position: LocationCoords }>) {
     const { venueId } = event.detail;
-    const venue = venues.find(v => v.id === venueId);
+    const venue = filteredVenues.find(v => v.id === venueId);
     if (venue) {
       selectedVenue = selectedVenue?.id === venueId ? null : venue;
       
@@ -251,6 +270,65 @@
   function handleMarkerHover(event: CustomEvent<{ venueId: string; position: LocationCoords }>) {
     // Could implement hover effects here
   }
+
+  // Apply client-side filtering to venues
+  function applyVenueFilters(venues: Venue[]): Venue[] {
+    return venues.filter(venue => {
+      // Filter by venue types if specified
+      if (venueTypeFilter && venueTypeFilter.length > 0) {
+        if (!venueTypeFilter.includes(venue.venueType)) {
+          return false;
+        }
+      }
+
+      // Filter by minimum rating
+      if (minRating !== undefined && minRating > 0) {
+        if (!venue.rating || venue.rating < minRating) {
+          return false;
+        }
+      }
+
+      // Filter by maximum price level
+      if (maxPriceLevel !== undefined && maxPriceLevel < 4) {
+        if (venue.priceLevel && venue.priceLevel > maxPriceLevel) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }
+
+  // Effect to update filtered venues when venues or filters change
+  $effect(() => {
+    filteredVenues = applyVenueFilters(venues);
+    console.log(`🔧 Applied filters: ${venues.length} → ${filteredVenues.length} venues`);
+  });
+
+  // Trigger search when search parameters change - moved to discrete function calls
+  function handleSearchParameterChange() {
+    if (!showVenues || !map) return;
+
+    // Get current map center for search
+    const currentCenter = map?.getCenter();
+    if (!currentCenter) return;
+
+    const searchCenter: LocationCoords = {
+      lat: currentCenter.lat(),
+      lng: currentCenter.lng()
+    };
+
+    console.log(`🔄 Search parameters changed - triggering new search`);
+    searchNearbyVenues(searchCenter);
+  }
+
+  // Watch for search parameter changes without using $effect
+  $effect(() => {
+    if (showVenues && map && (searchQuery || (venueTypeFilter && venueTypeFilter.length > 0))) {
+      // Use setTimeout to break the reactive cycle and avoid infinite loops
+      setTimeout(() => handleSearchParameterChange(), 100);
+    }
+  });
 
   // Effect to search venues when map viewport changes significantly
   $effect(() => {
@@ -272,7 +350,8 @@
       // Only search if we've moved significantly from last search location
       if (!venueSearchLocation || getDistance(newCenter, venueSearchLocation) > 1000) { // 1km threshold
         console.log(`🔄 Map moved ${venueSearchLocation ? getDistance(newCenter, venueSearchLocation).toFixed(0) + 'm' : 'initial'} - searching for venues`);
-        searchNearbyVenues(newCenter);
+        // Use setTimeout to avoid infinite loops
+        setTimeout(() => searchNearbyVenues(newCenter), 0);
       }
     });
 
@@ -334,7 +413,7 @@
 
   <!-- Venue markers -->
   {#if showVenues}
-    {#each venues as venue (venue.id)}
+    {#each filteredVenues as venue (venue.id)}
       <VenueMarker
         position={venue.position}
         title={venue.name}

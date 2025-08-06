@@ -1,5 +1,6 @@
 <script lang="ts">
   import MapContainer from '$lib/components/map/MapContainer.svelte';
+  import VenueSearchFilters from '$lib/components/map/VenueSearchFilters.svelte';
   import { locationStore } from '$lib/stores/location';
   import { mapStore } from '$lib/stores/map';
   import { googleMapsService } from '$lib/services/maps.js';
@@ -14,9 +15,18 @@
     { name: 'Chicago', coords: { lat: 41.8781, lng: -87.6298 } }
   ];
 
-  let selectedLocation: LocationCoords | null = null;
-  let mapHeight = '500px';
-  let followUser = false;
+  let selectedLocation = $state<LocationCoords | null>(null);
+  let mapHeight = $state('500px');
+  let followUser = $state(false);
+
+  // Search state
+  let searchFilters = $state<{
+    query: string;
+    venueTypes: string[];
+    radius: number;
+    minRating: number;
+    maxPriceLevel: number;
+  } | null>(null);
 
   function setLocation(coords: LocationCoords) {
     selectedLocation = coords;
@@ -26,6 +36,32 @@
     if ($locationStore.currentLocation) {
       selectedLocation = $locationStore.currentLocation;
     }
+  }
+
+  // Handle search from filters component
+  function handleSearch(event: CustomEvent<{
+    query: string;
+    filters: {
+      venueTypes: string[];
+      radius: number;
+      minRating: number;
+      maxPriceLevel: number;
+    }
+  }>) {
+    searchFilters = {
+      query: event.detail.query,
+      venueTypes: event.detail.filters.venueTypes,
+      radius: event.detail.filters.radius,
+      minRating: event.detail.filters.minRating,
+      maxPriceLevel: event.detail.filters.maxPriceLevel
+    };
+    console.log('🔍 Search triggered:', searchFilters);
+  }
+
+  // Handle clear search
+  function handleClearSearch() {
+    searchFilters = null;
+    console.log('🧹 Search cleared');
   }
 
 
@@ -144,16 +180,26 @@
     </div>
   </div>
 
+  <!-- Search Filters -->
+  <VenueSearchFilters 
+    on:search={handleSearch}
+    on:clear={handleClearSearch}
+  />
+
   <!-- Map -->
   <div class="bg-white rounded-lg shadow-md p-6">
-    <h2 class="text-xl font-semibold mb-4">Map Component</h2>
+    <h2 class="text-xl font-semibold mb-4">Interactive Map with Venues</h2>
     
     <MapContainer 
       center={selectedLocation}
       height={mapHeight}
       enableCurrentLocation={true}
       showVenues={true}
-      venueSearchRadius={5000}
+      venueSearchRadius={searchFilters?.radius || 5000}
+      venueTypeFilter={searchFilters?.venueTypes}
+      searchQuery={searchFilters?.query}
+      minRating={searchFilters?.minRating}
+      maxPriceLevel={searchFilters?.maxPriceLevel}
       className="border border-gray-200"
     />
   </div>
